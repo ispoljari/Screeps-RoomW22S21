@@ -1,9 +1,9 @@
-const roleHarvester = require('role.harvester'); // harvests energy from source and container, transfers energy to every construction (builds only when all other creeps are dead)
+const roleHarvester = require('role.harvester'); // harvests energy from source and container, transfers energy to every construction (builds only when all other transporter creeps are dead)
 const roleTruck = require('role.truck'); // withdraws energy from container, transfers energy to storage
 const roleRefiller = require('role.refiller'); // withdraws energy from storage, transfers energy to every other construction
 const roleUpgrader = require('role.upgrader'); // withdraws energy from storage, transfers energy to controller
-const roleBuilder = require('role.builder'); // withdraws energy from storage, transfers energy to construction sites
-const roleRepairer = require('role.repairer'); // withdraws energy from storage, transfers energy to broken constructions
+const roleBuilder = require('role.builder'); // withdraws energy from storage, builds structures from construction sites
+const roleRepairer = require('role.repairer'); // withdraws energy from storage, repairs broken constructions
 const roleMiner = require('role.miner'); // mines energy from source, drops it into container
 const structureTower = require('structure.tower');
 const utilMemory = require('util.memory');
@@ -27,7 +27,7 @@ module.exports.loop = function () {
     // if there is at least 1 miner, and a storage, spawn two trucks
     const storageConstructed = Game.spawns.Spawn1.room.find(FIND_STRUCTURES,{filter: structure => structure.structureType == STRUCTURE_STORAGE});
     const trucks = _.filter(Game.creeps, (creep) => creep.memory.role == 'truck');
-    if(((trucks.length < 3 && miners.length == 1) || (trucks.length < 5 && miners.length == 2)) && storageConstructed.length > 0) {
+    if(((trucks.length < 2 && miners.length == 1) || (trucks.length < 4 && miners.length == 2)) && storageConstructed.length > 0) {
         if (availEnergy >= 100) {
             roleTruck.spawn(availEnergy);       
         } 
@@ -35,7 +35,7 @@ module.exports.loop = function () {
     
      // if there is at least 1 truck, spawn two refillers
     const refillers = _.filter(Game.creeps, (creep) => creep.memory.role == 'refiller');
-    if(refillers.length < 2 && trucks.length > 0) {
+    if(refillers.length < 3 && storageConstructed.length > 0) {
         if (availEnergy >= 100) {
             roleRefiller.spawn(availEnergy);       
         } 
@@ -43,7 +43,7 @@ module.exports.loop = function () {
     
     // if there are no trucks or no refillers or no miners, spawn 3 harvesters
     const harvesters = _.filter(Game.creeps, (creep) => creep.memory.role == 'harvester');
-    if(harvesters.length < 3 && (trucks.length < 1 || refillers.length < 1 || miners.length < 1)) {
+    if(harvesters.length < 3 && (trucks.length < 1 || refillers.length < 1 || miners.length < 1 || storageConstructed.length == 0)) {
         if (availEnergy >= 200) {
             roleHarvester.spawn(availEnergy);       
         } 
@@ -112,19 +112,47 @@ module.exports.loop = function () {
     }
     
     // --------
-    // Setup tower defense logic
+    // Setup tower defense/heal/repair logic
     
      const towersConstructed = Game.spawns.Spawn1.room.find(FIND_STRUCTURES,
        {filter: structure => structure.structureType == STRUCTURE_TOWER});
-     const hostiles = Game.rooms['W22S21'].find(FIND_HOSTILE_CREEPS); 
+     const hostiles = Game.rooms['W22S21'].find(FIND_HOSTILE_CREEPS);
+     const hostileHealers = Game.rooms['W22S21'].find(FIND_HOSTILE_CREEPS, {filter: h => h.getActiveBodyparts(HEAL) > 0});
+     const hostileAttackers = Game.rooms['W22S21'].find(FIND_HOSTILE_CREEPS, {filter: h => h.getActiveBodyparts(ATTACK) > 0});
+     const hostileClaimers = Game.rooms['W22S21'].find(FIND_HOSTILE_CREEPS, {filter: h => h.getActiveBodyparts(CLAIM) > 0});
      
-     structureTower.defendRoom('W22S21');
+     if(hostileAttackers.length > 0) {
+        structureTower.defendRoom('W22S21', hostileAttackers[0]);
+     } else if (hostileHealers.length > 0 && hostileAttackers.length == 0) {
+        structureTower.defendRoom('W22S21', hostileHealers[0]); 
+     } else if (hostiles.length > 0 && hostileHealers.length == 0 && hostileAttackers.length == 0) {
+        structureTower.defendRoom('W22S21', hostiles[0]);  
+     }
+     
+     const damagedStructures = Game.rooms['W22S21'].find(FIND_STRUCTURES, {
+         filter: object => object.hits < object.hitsMax*0.6 && object.structureType != STRUCTURE_WALL && object.structureType != STRUCTURE_ROAD // start repairing structures only when their energy drops bellow 60%
+     });
+     
+     if (hostiles.length == 0) {
+        if (damagedStructures.length > 0) {
+            structureTower.repairStructure('W22S21', damagedStructures[0]);
+        } else {
+            for (let name in Game.creeps) {
+                const creep = Game.creeps[name];
+                if (creep.hits < creep.hitsMax) {
+                    structureTower.healCreep('W22S21', creep)
+                }
+            }
+        }
+     }
      
     // --------
     // If there are no towers or an enemy creep is detected, activate safe mode
        
-    if (towersConstructed.length < 1 || hostiles.length > 0) {
-       Game.rooms['W22S21'].controller.activateSafeMode(); 
+    if (towersConstructed.length < 1 || (hostileAttackers.length > 0 || hostileClaimers.length > 0) && damagedStructures.length > 0) {
+        if (Game.rooms['W22S21'].controller.safeMode < 10 && Game.rooms['W22S21'].controller.safeModeAvailable > 0) {
+            Game.rooms['W22S21'].controller.activateSafeMode(); 
+        }
     };
     
     // --------

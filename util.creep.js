@@ -27,7 +27,7 @@ const utilCreep = {
         } 
     },
     createCustomBody: function(energy) {
-        // use only 70% of available power for new creep (more sustainable)
+        // for now use only 70% of available energy to create new creep (more sustainable in the long run)
         let numOfParts =  Math.floor(energy*0.7 / (2*100)); // WORK is the heaviest part with 100 cost. Division by two is to allow 1 CARRY and 1 MOVE part for each WORK
         numOfParts = Math.min(numOfParts, Math.floor(50/3)); // Max. num. of allowed parts is 50
         const body = [];
@@ -54,7 +54,11 @@ const utilCreep = {
         numOfParts = Math.min(numOfParts, Math.floor(50/2)); // Max. num. of allowed parts is 50
         const body = [];
         
-        for (let i = 0; i<numOfParts; i++) {
+        for (let i = 0; i<1; i++) { // Add 1 WORK part to pure transporter units so that they can perform other duties as secondary work
+            body.push(WORK);
+        }
+        
+        for (let i = 0; i<(numOfParts-1); i++) {
             body.push(CARRY);
         }
 
