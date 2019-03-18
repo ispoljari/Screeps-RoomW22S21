@@ -1,2 +1,2 @@
 # Screeps
-This is the code I have so far in controlling my screeps
+This is the code I have so far for controlling my screeps
